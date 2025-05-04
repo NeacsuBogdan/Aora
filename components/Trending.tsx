@@ -1,5 +1,5 @@
-import { View, Text, FlatList, TouchableOpacity, ImageBackground, Image, ViewToken } from 'react-native'
-import { View as ViewAnima , CustomAnimation  } from 'react-native-animatable';
+import { View, Text, FlatList, TouchableOpacity, ImageBackground, Image, ViewToken } from 'react-native';
+import { View as ViewAnima } from 'react-native-animatable';
 import React, { useState, useRef } from 'react';
 import { icons } from '@/constants';
 import { Video, ResizeMode } from 'expo-av';
@@ -13,7 +13,6 @@ const zoomOut = {
   0: { scaleX: 1, scaleY: 1 },
   1: { scaleX: 0.9, scaleY: 0.9 },
 };
-
 
 type Post = {
   $id: string;
@@ -42,7 +41,7 @@ const TrendingItem = ({ activeItem, item }: { activeItem: string; item: Post }) 
             marginTop: 12,
             backgroundColor: 'rgba(255,255,255,0.1)',
           }}
-          resizeMode={ResizeMode.COVER} // Poți încerca și CONTAIN
+          resizeMode={ResizeMode.COVER}
           useNativeControls
           onPlaybackStatusUpdate={(status) => {
             if ('didJustFinish' in status && status.didJustFinish) {
@@ -50,7 +49,7 @@ const TrendingItem = ({ activeItem, item }: { activeItem: string; item: Post }) 
               videoRef.current && videoRef.current.stopAsync();
             }
           }}
-          onLoad={() => videoRef.current && videoRef.current.playAsync()} // Asigură că se redă corect
+          onLoad={() => videoRef.current && videoRef.current.playAsync()}
         />
       ) : (
         <TouchableOpacity
@@ -90,13 +89,20 @@ const TrendingItem = ({ activeItem, item }: { activeItem: string; item: Post }) 
 };
 
 const Trending = ({ posts }: { posts: Post[] }) => {
-  const [activeItem, setActiveItem] = useState(posts[1]?.$id);
+  const [activeItem, setActiveItem] = useState(posts[1]?.$id || posts[0]?.$id || '');
 
-  const viewableItemsChanged = ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-    if (viewableItems.length > 0) {
-      setActiveItem(viewableItems[0].item.$id);
+  const viewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      const firstVisible = viewableItems[0]?.item;
+      if (firstVisible && firstVisible.$id) {
+        setActiveItem(firstVisible.$id);
+      }
     }
-  }
+  );
+
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 70,
+  };
 
   return (
     <FlatList
@@ -105,11 +111,9 @@ const Trending = ({ posts }: { posts: Post[] }) => {
       renderItem={({ item }) => (
         <TrendingItem activeItem={activeItem} item={item} />
       )}
-      onViewableItemsChanged={viewableItemsChanged}
-      viewabilityConfig={{
-        itemVisiblePercentThreshold: 70,
-      }}
-      contentOffset={{ x: 170 ,y: 0 }}
+      onViewableItemsChanged={viewableItemsChanged.current}
+      viewabilityConfig={viewabilityConfig}
+      contentOffset={{ x: 170, y: 0 }}
       horizontal
     />
   );

@@ -8,6 +8,7 @@ export const config = {
     databaseId: '67d7045c0028418b0b97',
     userCollectionId: '67d7047a0012ec55b8aa',
     videoCollectionId: '67d7049c0004519741eb',
+    bookmarkCollectionId:'680fa8ec001f19d6b73a',
     storageId: "67d705ab001a20924077",
 };
 
@@ -18,6 +19,7 @@ const {
     databaseId,
     userCollectionId,
     videoCollectionId,
+    bookmarkCollectionId,
     storageId,
 } = config 
 // Inițializare Appwrite Client
@@ -123,50 +125,59 @@ export const getCurrentUser = async (): Promise<User | null> => {
 
 
 export const getAllPosts = async () => {
-    try {
-        const posts = await databases.listDocuments(
-            databaseId,
-            videoCollectionId,
-            [Query.orderDesc('$createdAt')]
-        );
-        return posts.documents;
-    } catch (error) {
-        // Type assertion pentru a trata error ca fiind un string sau Error
-        throw new Error((error as Error).message || "An error occurred");
-    }
+  try {
+      const posts = await databases.listDocuments(
+          databaseId,
+          videoCollectionId,
+          [Query.orderDesc('$createdAt')]
+      );
+
+      return posts.documents;
+  } catch (error) {
+      // Type assertion pentru a trata error ca fiind un string sau Error
+      throw new Error((error as Error).message || "An error occurred");
+  }
 };
 
 
 export const getLatestPosts = async () => {
-    try {
-        const posts = await databases.listDocuments(
-            databaseId,
-            videoCollectionId,
-            [
-                Query.orderDesc('$createdAt'),
-                Query.limit(7)
-            ]
-        );
-        return posts.documents;
-    } catch (error) {
-        // Type assertion pentru a trata error ca fiind un string sau Error
-        throw new Error((error as Error).message || "An error occurred");
-    }
+  try {
+      const posts = await databases.listDocuments(
+          databaseId,
+          videoCollectionId,
+          [
+              Query.orderDesc('$createdAt'),
+              Query.limit(7)
+          ]
+      );
+      return posts.documents;
+  } catch (error) {
+      // Type assertion pentru a trata error ca fiind un string sau Error
+      throw new Error((error as Error).message || "An error occurred");
+  }
 };
 
-export const searchPosts = async (query: string) => {
+export const searchPosts = async (query: string, userId: string) => {
     try {
-        const posts = await databases.listDocuments(
-            databaseId,
-            videoCollectionId,
-            [Query.search('title',query)]
-        );
-        return posts.documents;
+      const lowerCaseQuery = query.toLowerCase(); // Normalizăm query-ul la litere mici
+      const posts = await databases.listDocuments(
+        databaseId,
+        videoCollectionId,
+        [Query.search('title', lowerCaseQuery)]  // Căutăm titlurile normalizate
+      );
+  
+      const enrichedPosts = posts.documents.map((post) => ({
+        ...post,
+        userId: userId,
+        bookmarks: post.bookmarks || [],
+      }));
+  
+      return enrichedPosts;
     } catch (error) {
-        // Type assertion pentru a trata error ca fiind un string sau Error
-        throw new Error((error as Error).message || "An error occurred");
+      throw new Error((error as Error).message || "An error occurred");
     }
-};
+  };
+  
 
 export const getUserPosts = async (userId: string) => {
 
@@ -204,7 +215,7 @@ export const getFilePreview = async (fileId: string, type: 'video' | 'image'): P
             const url = await storage.getFileView(storageId, fileId);
             fileUrl = url.toString(); // Convertim URL la string
         } else if (type === 'image') {
-            const url = await storage.getFilePreview(storageId, fileId, 2000, 2000, ImageGravity.Center , 100);
+            const url = await storage.getFileView(storageId, fileId);
             fileUrl = url.toString(); // Convertim URL la string
         } else {
             throw new Error('Invalid file type');
@@ -272,6 +283,94 @@ export const createVideo = async (form: FormData): Promise<any> => {
     } catch (error) {
       console.error('Error in createVideo:', error); // Log pentru debugging
       throw new Error(error instanceof Error ? error.message : String(error));
+    }
+  };
+export const getUserBookmarks = async (userId: string): Promise<string[]> => {
+  try {
+    const response = await databases.listDocuments(databaseId, bookmarkCollectionId, [
+      Query.equal("creator", userId),
+    ]);
+
+    if (!response.documents) {
+      console.error("No documents returned.");
+      return [];
+    }
+
+    // Extragem doar ID-urile bookmarkurilor
+    const bookmarkIds = response.documents.map((doc) => doc.post)
+
+    return bookmarkIds; // Returnăm doar ID-urile bookmarkurilor
+  } catch (error) {
+    console.error("Error fetching bookmarks:", error);
+    throw error;
+  }
+};
+  
+
+// Adaugă un bookmark
+export const addBookmark = async (userId: string, postId: string) => {
+    try {
+        // Pregătește datele pentru documentul de bookmark
+        const bookmarkData = {
+            creator: userId, // ID-ul utilizatorului care adaugă bookmark-ul
+            post: postId,    // ID-ul postului pe care îl adaugi la bookmarks
+        };
+
+        // Crează un document de tip bookmark în colecția dedicată
+        const bookmark = await databases.createDocument(
+            databaseId,
+            bookmarkCollectionId,
+            ID.unique(),
+            bookmarkData
+        );
+        return bookmark;
+    } catch (error) {
+        console.error("Error in addBookmark:", error);  // Log eroare
+        throw new Error(error as string);
+    }
+};
+
+
+// Șterge un bookmark
+export const removeBookmark = async (userId: string, postId: string) => {
+    try {
+        // Căutăm bookmark-ul pe baza creator și post
+        const bookmarks = await databases.listDocuments(
+            databaseId,
+            bookmarkCollectionId,
+            [
+                Query.equal('creator', userId), // Căutăm după creator (ID-ul utilizatorului)
+                Query.equal('post', postId)     // Căutăm după post (ID-ul postării)
+            ]
+        );
+
+        // Verificăm dacă există bookmark-ul
+        if (bookmarks.documents.length === 0) {
+            throw new Error("Bookmark not found");
+        }
+
+        // Ștergem documentul (bookmark-ul) găsit
+        const bookmarkId = bookmarks.documents[0].$id;
+        await databases.deleteDocument(databaseId, bookmarkCollectionId, bookmarkId);
+
+        return { success: true };
+    } catch (error) {
+        console.error("Error in removeBookmark:", error);
+        throw new Error(error as string);
+    }
+};
+
+export const deleteVideoFromServer = async (videoId: string) => {
+    try {
+      if (!videoId) throw new Error("No video ID provided");
+  
+      // Ștergem documentul din baza de date (colecția de videoclipuri)
+      await databases.deleteDocument(databaseId, videoCollectionId, videoId);
+  
+      console.log(`Video with ID ${videoId} was deleted successfully.`);
+    } catch (error) {
+      console.error("Error deleting video:", error);
+      throw new Error(error as string);  // Aruncăm o eroare dacă ceva nu merge
     }
   };
   

@@ -1,43 +1,61 @@
-import { getCurrentUser } from "@/lib/appwrite";
+import { getCurrentUser, getUserBookmarks } from "@/lib/appwrite";
 import { createContext, useContext, useState, useEffect } from "react";
-import { ReactNode } from 'react';
-import { User } from '@/app/Types/types'; // Importă tipul User
+import { ReactNode } from "react";
+import { User } from "@/app/Types/types";
 
-// Definirea valorii implicite pentru context
+// Context inițial
 const GlobalContext = createContext({
   isLoggedIn: false,
   setIsLoggedIn: (value: boolean) => {},
-  user: null as User | null, // User poate fi null sau un obiect de tip User
+  user: null as User | null,
   setUser: (user: User | null) => {},
   isLoading: true,
+  bookmarks: [] as string[],
+  setBookmarks: (bookmarks: string[]) => {},
 });
 
 export const useGlobalContext = () => useContext(GlobalContext);
 
 export const GlobalProvider = ({ children }: { children: ReactNode }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState<User | null>(null); // Utilizăm User sau null
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [bookmarks, setBookmarks] = useState<string[]>([]); // bookmarks separat
 
   useEffect(() => {
-    getCurrentUser()
-      .then((res) => {
+    const fetchCurrentUser = async () => {
+      try {
+        const res = await getCurrentUser();
         if (res) {
-          setIsLoggedIn(true); // Setează true doar dacă utilizatorul nu este guest
-          setUser(res); // Setăm utilizatorul doar dacă există
+          setIsLoggedIn(true);
+          setUser(res);
+          await fetchUserBookmarks(res.$id); // după ce avem userul, chemăm separat bookmarks
         } else {
-          setIsLoggedIn(false); // Asigură-te că rămâne false dacă nu este niciun utilizator autenticat
-          setUser(null); // Dacă nu există utilizator, setăm user-ul la null
+          setIsLoggedIn(false);
+          setUser(null);
         }
-      })
-      .catch((error) => {
-        setIsLoggedIn(false); // În cazul unei erori, considerăm că nu este autentificat
-        setUser(null); // Nu setăm un guest dacă există o eroare
-      })
-      .finally(() => {
+      } catch (error) {
+        console.error("Error fetching current user:", error);
+        setIsLoggedIn(false);
+        setUser(null);
+      } finally {
         setIsLoading(false);
-      });
+      }
+    };
+
+    fetchCurrentUser();
   }, []);
+
+  const fetchUserBookmarks = async (userId: string) => {
+    try {
+      const bookmarksData = await getUserBookmarks(userId);
+      console.log("Fetched bookmarks:", bookmarksData); // log aici
+      setBookmarks(bookmarksData);
+    } catch (error) {
+      console.error("Error fetching bookmarks:", error);
+      setBookmarks([]); // în caz de eroare, golim bookmarks
+    }
+  };
 
   return (
     <GlobalContext.Provider
@@ -47,6 +65,8 @@ export const GlobalProvider = ({ children }: { children: ReactNode }) => {
         user,
         setUser,
         isLoading,
+        bookmarks,
+        setBookmarks,
       }}
     >
       {children}

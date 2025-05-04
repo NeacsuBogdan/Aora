@@ -29,7 +29,18 @@ const Profile = () => {
       <FlatList
         data={posts || []}
         keyExtractor={(item, index) => item.id || index.toString()}
-        renderItem={({ item }) => <VideoCard video={item} />}
+        renderItem={({ item }) => (
+          <VideoCard
+            video={{
+              title: item.title,
+              thumbnail: item.thumbnail,
+              video: item.video,
+              creator: item.creator,
+              id: item.$id,                 // <-- id-ul postării
+              userId: item.creator.$id || '' // <-- id-ul creatorului
+            }}
+          />
+        )}                
         ListHeaderComponent={() => (
           <View className='w-full justify-center items-center mt-6 mb-12 px-4'>
             <TouchableOpacity
